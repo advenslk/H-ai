@@ -143,20 +143,31 @@ class HelzerAgent:
                     key = f"{getattr(message, 'id', requester_id)}:{name}:{time.time_ns()}"
                     self.pending[key] = {"message": message, "requester_id": requester_id, "name": name, "args": args}
                     return ConfirmationView(self, key, f"{name}: {', '.join(f'{k}={v}' for k, v in args.items())}")
-                try:\n                    if name == "add_custom_emoji":\n                        result = await execute_emoji_tool(message, args)\n                    else:\n                        result = await execute(message, name, args, self.bot)
+                try:
+                    if name == "add_custom_emoji":
+                        result = await execute_emoji_tool(message, args)
+                    else:
+                        result = await execute(message, name, args, self.bot)
                 except Exception as exc: result = {"ok": False, "error": str(exc)}
                 contents.append(provider.function_result(name, result))
         return "I stopped the action chain because it reached the safety limit."
 
     async def execute_pending(self, pending: dict[str, Any]):
-        try: return await execute(pending["message"], pending["name"], pending["args"], self.bot)
-        except Exception as exc: return {"ok": False, "error": str(exc)}
+        try:
+            if pending["name"] == "add_custom_emoji":
+                return await execute_emoji_tool(pending["message"], pending["args"])
+            return await execute(pending["message"], pending["name"], pending["args"], self.bot)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     @staticmethod
     def result_text(result: dict[str, Any]) -> str:
         return f"Done. `{result.get('action', 'action completed')}` completed successfully." if result.get("ok") else f"I couldn't complete that: {result.get('error', 'unknown error')}"
 
 
-def discord_to_gemini_content(role: str, text: str):
+async def discord_to_gemini_content(role: str, text: str, attachments=None):
     from google.genai import types
-    return types.Content(role="user" if role == "user" else "model", parts=[types.Part.from_text(text=text)])
+    parts = [types.Part.from_text(text=text)]
+    if role == "user" and attachments:
+        parts.extend(await attachment_parts(attachments))
+    return types.Content(role="user" if role == "user" else "model", parts=parts)
