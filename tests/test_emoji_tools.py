@@ -1,4 +1,5 @@
 from helzer.emoji_tools import MAX_EMOJI_BYTES, _clean_name, _crop_image, emoji_tool_specs
+from helzer.image_tools import is_image_generation_request, requested_image_defaults
 from PIL import Image
 import io
 
@@ -78,3 +79,13 @@ def test_emoji_selection_is_capped_at_5000():
         for i in range(5001)
     ]
     assert len(_select_unique_images(images, 5000)) == 5000
+
+
+def test_image_request_detection_routes_advertisement_to_generation():
+    prompt = "Helzer make me a premium HelzerX Cloud 16:9 advertisement"
+    assert is_image_generation_request(prompt) is True
+    assert requested_image_defaults(prompt) == ("16:9", "2K")
+
+
+def test_image_request_detection_does_not_capture_normal_design_discussion():
+    assert is_image_generation_request("What is a good design for my Discord server?") is False
