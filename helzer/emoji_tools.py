@@ -33,7 +33,16 @@ SECRET_NAMES = {".env", ".env.local", ".env.production", ".env.development"}
 SECRET_PATTERNS = ("token", "password", "passwd", "secret", "api_key", "apikey", "private_key")
 
 def emoji_tool_specs() -> list[dict[str, Any]]:
+    return _emoji_tool_specs()
+
+
+def _emoji_tool_specs() -> list[dict[str, Any]]:
     return [{
+        "type": "function",
+        "name": "list_custom_emojis",
+        "description": "List every custom emoji currently available in the current Discord server, including name, ID, animated status, and mention.",
+        "parameters": {"type": "object", "properties": {}},
+    }, {
         "type": "function",
         "name": "add_custom_emoji",
         "description": (
@@ -75,6 +84,23 @@ def emoji_tool_specs() -> list[dict[str, Any]]:
             },
         },
     }]
+
+async def execute_list_emojis_tool(message) -> dict[str, Any]:
+    """Return the current server's custom emoji inventory."""
+    guild = getattr(message, "guild", None)
+    if guild is None:
+        raise ValueError("Custom emojis can only be listed inside a Discord server.")
+    emojis = list(getattr(guild, "emojis", []) or [])
+    return {
+        "ok": True,
+        "action": "list_custom_emojis",
+        "count": len(emojis),
+        "emojis": [
+            {"id": str(emoji.id), "name": emoji.name, "animated": bool(emoji.animated), "mention": str(emoji)}
+            for emoji in emojis
+        ],
+    }
+
 
 async def execute_remove_emojis_tool(message, args: dict[str, Any]) -> dict[str, Any]:
     """Delete selected custom emojis from the current server."""
