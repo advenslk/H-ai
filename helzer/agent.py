@@ -73,7 +73,9 @@ class HelzerAgent:
 
     @staticmethod
     def _needs_tools(prompt: str) -> bool:
-        return any(hint in prompt.casefold() for hint in TOOL_HINTS)
+        # Tool eligibility must not depend on English keywords; the model can infer
+        # intent from any supported language when the tool schemas are available.
+        return True
 
     @staticmethod
     def _normalize_tool_args(message, name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -177,8 +179,13 @@ class HelzerAgent:
             contents.append(response.candidates[0].content)
             for call in calls:
                 name = call.name; args = self._normalize_tool_args(message, name, dict(call.args or {}))
-                if name in MUTATING_TOOLS and (not guild or not isinstance(user, discord.Member) or not self.authorized(user)):
-                    contents.append(provider.function_result(name, {"ok": False, "error": "Requester is not authorized for server actions."})); continue
+                if name in MUTATING_TOOLS:
+                    allowed = guild and isinstance(user, discord.Member) and self.authorized(user)
+                    if name in {"add_custom_emoji", "remove_custom_emojis"} and guild and isinstance(user, discord.Member):
+                        allowed = allowed or user.guild_permissions.manage_emojis_and_stickers
+                    if not allowed:
+                        contents.append(provider.function_result(name, {"ok": False, "error": "Requester is not authorized for this server action."}))
+                        continue
                 if name in HIGH_RISK:
                     key = f"{getattr(message, 'id', requester_id)}:{name}:{time.time_ns()}"
                     self.pending[key] = {"message": message, "requester_id": requester_id, "name": name, "args": args}
