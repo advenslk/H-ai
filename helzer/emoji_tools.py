@@ -18,7 +18,7 @@ IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image
 # Archive/source inspection limits prevent ZIP bombs and accidental secret exposure.
 MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 512 * 1024 * 1024
-MAX_ARCHIVE_FILES = 40_000
+MAX_ARCHIVE_FILES = 500
 MAX_FILE_BYTES = 512 * 1024
 MAX_CONTEXT_CHARS = 80_000
 MAX_ARCHIVE_IMAGE_BYTES = 8 * 1024 * 1024
@@ -108,7 +108,7 @@ def _safe_source_name(name: str) -> bool:
 
 def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
     if len(data) > MAX_ARCHIVE_BYTES:
-        raise ValueError("That archive is too large. Maximum supported ZIP size is 25 MB.")
+        raise ValueError("That archive is too large. Maximum supported ZIP size is 100 MB.")
     if not filename.lower().endswith(".zip"):
         raise ValueError("Only .zip project archives are supported.")
     try:
@@ -130,7 +130,7 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
     for info in infos:
         if info.is_dir():
             continue
-        normalized = PurePosixPath(info.filename.replace("\\\\", "/"))
+        normalized = PurePosixPath(info.filename.replace("\\", "/"))
         suffix = normalized.suffix.lower()
         if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
             if info.file_size <= MAX_ARCHIVE_IMAGE_BYTES and not normalized.is_absolute() and ".." not in normalized.parts:
@@ -155,7 +155,7 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
             continue
         total += info.file_size
         if total > MAX_EXTRACTED_BYTES:
-            raise ValueError("ZIP expands beyond the 50 MB inspection limit.")
+            raise ValueError("ZIP expands beyond the 512 MB inspection limit.")
         raw = archive.read(info)
         text = raw.decode("utf-8", errors="replace")
         files.append({"path": info.filename, "content": text})
