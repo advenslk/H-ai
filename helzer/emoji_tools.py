@@ -71,8 +71,10 @@ def _emoji_tool_specs() -> list[dict[str, Any]]:
         "name": "remove_custom_emojis",
         "description": (
             "Delete custom emojis from the current Discord server. Use all=true when the user asks "
-            "to remove/delete all server emojis. Use names or emoji_ids for specific emojis. This is "
-            "a destructive server action and should only be executed after the user's confirmation."
+            "to remove/delete every or all server emoji, including natural-language and multilingual requests. "
+            "Perform one bulk removal operation with all=true rather than calling this tool separately for each emoji. "
+            "Use names or emoji_ids for specific emojis. The bot needs Manage Expressions permission. "
+            "This is a destructive server action and should only be executed after the user's confirmation."
         ),
         "parameters": {
             "type": "object",
