@@ -119,7 +119,7 @@ class HelzerAgent:
     async def respond(self, message, prompt: str):
         user = actor(message); requester_id = getattr(user, "id", 0); scope = scope_for(message)
         history = await self.memory.recent(scope)
-        contents: list[Any] = [discord_to_gemini_content(role, content) for role, content in history[-8:]]
+        contents: list[Any] = [await discord_to_gemini_content(role, content) for role, content in history[-8:]]
         contents.append(await discord_to_gemini_content("user", discord_context(message) + "\nUser request: " + prompt, getattr(message, "attachments", None)))
         guild = getattr(message, "guild", None)
         needs_tools = self._needs_tools(prompt)
