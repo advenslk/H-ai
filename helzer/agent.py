@@ -9,6 +9,7 @@ import discord
 
 from .context import actor, discord_context, scope_for
 from .gemini import GeminiProvider, GeminiQuotaError
+from .emoji_tools import attachment_parts, emoji_tool_specs, execute_emoji_tool
 from .memory import MemoryStore
 from .prompts import build_system_prompt
 from .tools import HIGH_RISK, execute, tool_specs
@@ -19,7 +20,7 @@ log = logging.getLogger("helzer.agent")
 MUTATING_TOOLS = {
     "send_message", "send_dm", "timeout_member", "ban_member", "kick_member", "unban_member",
     "add_role", "remove_role", "create_role", "create_channel", "delete_channel", "rename_channel",
-    "lock_channel", "unlock_channel", "set_slowmode", "purge_messages", "assign_role_all",
+    "lock_channel", "unlock_channel", "set_slowmode", "purge_messages", "assign_role_all", "add_custom_emoji",
 }
 TOOL_HINTS = ("lock", "unlock", "channel", "dm", "direct message", "message", "send", "role", "timeout", "kick", "ban", "unban", "purge", "delete", "remove", "add", "create", "rename", "slowmode", "slow mode", "server", "member", "permission", "permissions")
 
@@ -61,7 +62,7 @@ class HelzerAgent:
         self.pending: dict[str, dict[str, Any]] = {}
         self._rate_lock = asyncio.Lock()
         self._last_request: dict[int, float] = {}
-        self._tool_specs = tool_specs()
+        self._tool_specs = tool_specs() + emoji_tool_specs()
 
     def authorized(self, member: discord.Member) -> bool:
         if member.id in self.settings.owner_ids or member.guild_permissions.administrator: return True
@@ -119,7 +120,7 @@ class HelzerAgent:
         user = actor(message); requester_id = getattr(user, "id", 0); scope = scope_for(message)
         history = await self.memory.recent(scope)
         contents: list[Any] = [discord_to_gemini_content(role, content) for role, content in history[-8:]]
-        contents.append(discord_to_gemini_content("user", discord_context(message) + "\nUser request: " + prompt))
+        contents.append(await discord_to_gemini_content("user", discord_context(message) + "\nUser request: " + prompt, getattr(message, "attachments", None)))
         guild = getattr(message, "guild", None)
         needs_tools = self._needs_tools(prompt)
         tools = self._tool_specs if needs_tools else []
@@ -142,7 +143,7 @@ class HelzerAgent:
                     key = f"{getattr(message, 'id', requester_id)}:{name}:{time.time_ns()}"
                     self.pending[key] = {"message": message, "requester_id": requester_id, "name": name, "args": args}
                     return ConfirmationView(self, key, f"{name}: {', '.join(f'{k}={v}' for k, v in args.items())}")
-                try: result = await execute(message, name, args, self.bot)
+                try:\n                    if name == "add_custom_emoji":\n                        result = await execute_emoji_tool(message, args)\n                    else:\n                        result = await execute(message, name, args, self.bot)
                 except Exception as exc: result = {"ok": False, "error": str(exc)}
                 contents.append(provider.function_result(name, result))
         return "I stopped the action chain because it reached the safety limit."
