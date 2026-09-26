@@ -122,6 +122,9 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
     total = 0
     files: list[dict[str, str]] = []
     images: list[dict[str, Any]] = []
+    seen_image_digests: set[str] = set()
+    image_candidates = 0
+    image_duplicates = 0
     context_parts: list[str] = []
     for info in infos:
         if info.is_dir():
@@ -131,7 +134,16 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
         if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
             if info.file_size <= MAX_ARCHIVE_IMAGE_BYTES and not normalized.is_absolute() and ".." not in normalized.parts:
                 mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}[suffix]
-                images.append({"path": info.filename, "data": archive.read(info), "size": info.file_size, "mime": mime})
+                raw_image = archive.read(info)
+                image_candidates += 1
+                digest = _image_digest(raw_image)
+                if digest in seen_image_digests:
+                    image_duplicates += 1
+                elif len(images) < MAX_SELECTED_EMOJIS:
+                    seen_image_digests.add(digest)
+                    images.append({"path": info.filename, "data": raw_image, "size": info.file_size, "mime": mime, "digest": digest})
+                else:
+                    seen_image_digests.add(digest)
             continue
         if not _safe_source_name(info.filename):
             continue
@@ -147,15 +159,14 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
         if sum(len(x) for x in context_parts) >= MAX_CONTEXT_CHARS:
             break
 
-    selected = _select_unique_images(images, MAX_SELECTED_EMOJIS)
     return {
         "filename": filename,
         "files": files,
         "file_count": len(files),
-        "images": selected,
-        "image_count": len(selected),
-        "image_duplicates_removed": max(0, len(images) - len(selected)),
-        "image_candidates": len(images),
+        "images": images,
+        "image_count": len(images),
+        "image_duplicates_removed": image_duplicates,
+        "image_candidates": image_candidates,
         "context": "".join(context_parts)[:MAX_CONTEXT_CHARS],
     }
 
