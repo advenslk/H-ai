@@ -65,6 +65,18 @@ def test_zip_limits_file_count():
         )
 
 
+def test_zip_image_paths_reject_windows_traversal():
+    import zipfile
+    raw = io.BytesIO()
+    with zipfile.ZipFile(raw, "w") as z:
+        z.writestr(r"..\\escape.png", b"not-safe")
+        z.writestr("safe.png", b"safe")
+    result = __import__("helzer.emoji_tools", fromlist=["inspect_archive"]).inspect_archive(
+        raw.getvalue(), "project.zip"
+    )
+    assert [image["path"] for image in result["images"]] == ["safe.png"]
+
+
 def test_duplicate_image_assets_are_removed():
     from helzer.emoji_tools import _select_unique_images
     images = [
