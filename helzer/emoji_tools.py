@@ -16,9 +16,9 @@ MAX_EMOJI_SIDE = 128
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
 
 # Archive/source inspection limits prevent ZIP bombs and accidental secret exposure.
-MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
-MAX_EXTRACTED_BYTES = 50 * 1024 * 1024
-MAX_ARCHIVE_FILES = 500
+MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 512 * 1024 * 1024
+MAX_ARCHIVE_FILES = 40_000
 MAX_FILE_BYTES = 512 * 1024
 MAX_CONTEXT_CHARS = 80_000
 MAX_ARCHIVE_IMAGE_BYTES = 8 * 1024 * 1024
