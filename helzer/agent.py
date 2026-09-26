@@ -11,7 +11,7 @@ import discord
 from .context import actor, discord_context, scope_for
 from .gemini import GeminiProvider, GeminiQuotaError
 from .emoji_tools import attachment_parts, emoji_tool_specs, execute_emoji_tool
-from .image_tools import execute_image_tool, image_tool_specs
+from .image_tools import execute_image_tool, image_tool_specs, is_image_generation_request, requested_image_defaults
 from .memory import MemoryStore
 from .prompts import build_system_prompt
 from .tools import HIGH_RISK, execute, tool_specs
@@ -137,6 +137,26 @@ class HelzerAgent:
         contents: list[Any] = [await discord_to_gemini_content(role, content) for role, content in history[-8:]]
         contents.append(await discord_to_gemini_content("user", discord_context(message) + "\nUser request: " + prompt, getattr(message, "attachments", None)))
         guild = getattr(message, "guild", None)
+
+        # Route clear visual requests directly to the image model. This prevents
+        # the conversational model from replying with a prompt instead of creating
+        # the requested image and removes an unnecessary LLM/tool-selection round.
+        if is_image_generation_request(prompt):
+            ratio, size = requested_image_defaults(prompt)
+            result = await execute_image_tool(
+                message,
+                {"prompt": prompt, "aspect_ratio": ratio, "image_size": size},
+                self.gemini.client,
+            )
+            if result.get("ok"):
+                self._generated_files.setdefault(getattr(message, "id", 0), []).append(
+                    {"path": result["path"], "filename": result["filename"]}
+                )
+                await self.memory.add(scope, requester_id, "user", prompt, time.time())
+                answer = f"Generated your {ratio} HelzerX visual."
+                await self.memory.add(scope, requester_id, "assistant", answer, time.time())
+                return answer
+
         needs_tools = self._needs_tools(prompt)
         tools = self._tool_specs if needs_tools else []
         provider = self.fast_gemini
