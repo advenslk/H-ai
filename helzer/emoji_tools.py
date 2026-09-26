@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 import zipfile
@@ -21,6 +22,8 @@ MAX_ARCHIVE_FILES = 500
 MAX_FILE_BYTES = 512 * 1024
 MAX_CONTEXT_CHARS = 80_000
 MAX_ARCHIVE_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_SELECTED_EMOJIS = 5000
+MAX_GEMINI_EMOJI_PREVIEWS = 24
 SOURCE_EXTENSIONS = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml", ".toml",
     ".ini", ".cfg", ".md", ".txt", ".html", ".css", ".scss", ".java", ".kt",
@@ -144,13 +147,38 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
         if sum(len(x) for x in context_parts) >= MAX_CONTEXT_CHARS:
             break
 
+    selected = _select_unique_images(images, MAX_SELECTED_EMOJIS)
     return {
         "filename": filename,
         "files": files,
         "file_count": len(files),
-        "images": images,
+        "images": selected,
+        "image_count": len(selected),
+        "image_duplicates_removed": max(0, len(images) - len(selected)),
+        "image_candidates": len(images),
         "context": "".join(context_parts)[:MAX_CONTEXT_CHARS],
     }
+
+def _image_digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _select_unique_images(images: list[dict[str, Any]], limit: int = MAX_SELECTED_EMOJIS) -> list[dict[str, Any]]:
+    """Keep unique image assets, capped for safe processing of huge ZIPs."""
+    selected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for image in images:
+        digest = _image_digest(image["data"])
+        if digest in seen:
+            continue
+        seen.add(digest)
+        item = dict(image)
+        item["digest"] = digest
+        selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
+
 
 def archive_parts(attachments) -> list[Any]:
     parts: list[Any] = []
@@ -190,12 +218,16 @@ async def attachment_parts(attachments) -> list[Any]:
                 result = inspect_archive(data, filename)
                 parts.append(types.Part.from_text(text=(
                     f"ZIP attachment {index}: {filename}\n"
-                    f"Inspected {result['file_count']} source files and {len(result['images'])} image assets. "
-                    "Secrets, binaries, unsafe paths, and oversized files were excluded.\n"
+                    f"Inspected {result['file_count']} source files. Found {result['image_candidates']} image candidates; "
+                    f"selected {result['image_count']} unique emoji assets and removed {result['image_duplicates_removed']} exact duplicates. "
+                    "Only a small visual preview set is sent to the vision model for speed. "
+                    "Use an exact selected asset path with archive_path when adding an emoji.\n"
                     + result["context"]
+                    + "\nSELECTED EMOJI PATHS (up to 5000):\n"
+                    + "\n".join(image["path"] for image in result["images"])
                 )))
-                for image in result["images"]:
-                    parts.append(types.Part.from_text(text=f"ZIP image: {image['path']}"))
+                for image in result["images"][:MAX_GEMINI_EMOJI_PREVIEWS]:
+                    parts.append(types.Part.from_text(text=f"ZIP emoji preview: {image['path']}"))
                     parts.append(types.Part.from_bytes(data=image["data"], mime_type=image["mime"]))
             except ValueError as exc:
                 parts.append(types.Part.from_text(text=f"ZIP attachment {index}: {exc}"))
@@ -245,4 +277,4 @@ async def execute_emoji_tool(message, args: dict[str, Any]) -> dict[str, Any]:
             "The server may have reached its emoji limit or the image may be invalid."
         ) from exc
     return {"ok": True, "action": "add_custom_emoji", "name": emoji.name, "id": str(emoji.id),
-            "mention": str(emoji), "attachment_index": index}
+            "mention": str(emoji), "source": source_name}
