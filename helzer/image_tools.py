@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from typing import Any
 
@@ -10,16 +11,41 @@ IMAGE_MODEL = os.getenv("HELZER_IMAGE_MODEL", "gemini-3.1-flash-image")
 ALLOWED_RATIOS = {"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"}
 ALLOWED_SIZES = {"512", "1K", "2K", "4K"}
 
+_IMAGE_ACTIONS = (
+    "generate", "make", "create", "design", "draw", "render",
+)
+_IMAGE_OBJECTS = (
+    "image", "picture", "banner", "advertisement", "advert", "poster",
+    "logo", "thumbnail", "graphic", "artwork", "illustration", "visual",
+)
+
+def is_image_generation_request(prompt: str) -> bool:
+    """Return True when the user is clearly asking Helzer to create a visual asset."""
+    text = str(prompt or "").casefold()
+    if not text:
+        return False
+    has_action = any(re.search(rf"\b{re.escape(word)}\b", text) for word in _IMAGE_ACTIONS)
+    has_object = any(re.search(rf"\b{re.escape(word)}\b", text) for word in _IMAGE_OBJECTS)
+    return has_object and (has_action or "16:9" in text or "9:16" in text)
+
+def requested_image_defaults(prompt: str) -> tuple[str, str]:
+    """Infer sensible output defaults without requiring another model round."""
+    text = str(prompt or "").casefold()
+    ratio = "16:9" if "16:9" in text else "9:16" if "9:16" in text else "1:1"
+    if ratio == "1:1" and any(word in text for word in ("banner", "advertisement", "advert", "poster", "thumbnail")):
+        ratio = "16:9"
+    return ratio, "2K"
+
 def image_tool_specs() -> list[dict[str, Any]]:
     return [{
         "type": "function",
         "name": "generate_image",
         "description": (
             "Generate a polished professional image from a design brief. Use for logos, branding, "
-            "posters, banners, social graphics, illustrations, icons, stickers, product visuals, "
-            "thumbnails, and other visual design work. Act like a senior graphic designer and art "
-            "director: improve composition, hierarchy, typography, spacing, lighting, materials, "
-            "color harmony, and visual consistency. Turn natural language into strong art direction."
+            "posters, banners, advertisements, social graphics, illustrations, icons, stickers, "
+            "product visuals, thumbnails, and other visual design work. Act like a senior graphic "
+            "designer and art director: improve composition, hierarchy, typography, spacing, lighting, "
+            "materials, color harmony, and visual consistency. Turn natural language into strong art direction."
         ),
         "parameters": {
             "type": "object",
