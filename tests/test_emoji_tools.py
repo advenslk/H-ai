@@ -112,3 +112,14 @@ def test_image_generation_config_uses_supported_generate_content_fields():
     assert config.response_modalities == ["IMAGE"]
     assert config.image_config.aspect_ratio == "16:9"
     assert config.image_config.image_size == "2K"
+
+
+def test_combined_tool_specs_do_not_declare_duplicate_function_names():
+    from helzer.tools import tool_specs
+    from helzer.image_tools import image_tool_specs
+
+    names = [
+        item["name"]
+        for item in tool_specs() + emoji_tool_specs() + image_tool_specs()
+    ]
+    assert len(names) == len(set(names))
