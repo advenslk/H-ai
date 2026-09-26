@@ -57,7 +57,67 @@ def emoji_tool_specs() -> list[dict[str, Any]]:
             },
             "required": ["name"],
         },
+    }, {
+        "type": "function",
+        "name": "remove_custom_emojis",
+        "description": (
+            "Delete custom emojis from the current Discord server. Use all=true when the user asks "
+            "to remove/delete all server emojis. Use names or emoji_ids for specific emojis. This is "
+            "a destructive server action and should only be executed after the user's confirmation."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "all": {"type": "boolean", "description": "Remove every custom emoji in the current server."},
+                "names": {"type": "array", "items": {"type": "string"}, "description": "Exact custom emoji names to remove."},
+                "emoji_ids": {"type": "array", "items": {"type": "string"}, "description": "Exact Discord custom emoji IDs to remove."},
+                "reason": {"type": "string", "description": "Optional audit-log reason."},
+            },
+        },
     }]
+
+async def execute_remove_emojis_tool(message, args: dict[str, Any]) -> dict[str, Any]:
+    """Delete selected custom emojis from the current server."""
+    guild = getattr(message, "guild", None)
+    if guild is None:
+        raise ValueError("Custom emojis can only be removed inside a Discord server.")
+
+    all_emojis = list(getattr(guild, "emojis", []) or [])
+    remove_all = bool(args.get("all", False))
+    names = {str(name).strip().casefold() for name in (args.get("names") or []) if str(name).strip()}
+    emoji_ids = {str(value).strip() for value in (args.get("emoji_ids") or []) if str(value).strip()}
+
+    if not remove_all and not names and not emoji_ids:
+        raise ValueError("Specify all=true, emoji names, or emoji IDs to remove.")
+
+    selected = all_emojis if remove_all else [
+        emoji for emoji in all_emojis
+        if emoji.name.casefold() in names or str(emoji.id) in emoji_ids
+    ]
+    if not selected:
+        return {"ok": True, "action": "remove_custom_emojis", "removed": 0, "not_found": sorted(names | emoji_ids)}
+
+    me = getattr(guild, "me", None)
+    if me is not None and not me.guild_permissions.manage_emojis_and_stickers:
+        raise ValueError("The bot needs Manage Expressions permission to remove custom emojis.")
+
+    removed, failed = [], []
+    for emoji in selected:
+        try:
+            await emoji.delete(reason=args.get("reason") or "Removed by Helzer at the user's request")
+            removed.append({"id": str(emoji.id), "name": emoji.name})
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            failed.append({"id": str(emoji.id), "name": emoji.name, "error": str(exc)})
+
+    return {
+        "ok": not failed,
+        "action": "remove_custom_emojis",
+        "removed": len(removed),
+        "removed_emojis": removed,
+        "failed": len(failed),
+        "failed_emojis": failed,
+    }
+
 
 def _clean_name(value: str) -> str:
     name = re.sub(r"[^a-zA-Z0-9_]+", "_", str(value).strip().lower()).strip("_")
