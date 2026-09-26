@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 import discord
 
-HIGH_RISK = {"timeout_member", "ban_member", "kick_member", "unban_member", "delete_channel", "purge_messages", "create_channel", "lock_channel", "unlock_channel", "assign_role_all"}
+HIGH_RISK = {"timeout_member", "ban_member", "kick_member", "unban_member", "delete_channel", "purge_messages", "create_channel", "lock_channel", "unlock_channel", "assign_role_all", "remove_custom_emojis"}
 
 
 def tool_specs() -> list[dict[str, Any]]:
@@ -15,7 +15,7 @@ def tool_specs() -> list[dict[str, Any]]:
         return {"type": "function", "name": name, "description": description, "parameters": parameters}
     discord_id = {"type": "string", "description": "Discord snowflake ID as an exact decimal string. Never round or convert it to a floating-point number."}
     return [
-        fn("server_info", "Get useful information about the current Discord server.", {}),
+        fn("server_info", "Get useful information about the current Discord server.", {}),\n        fn("remove_custom_emojis", "Delete custom emojis from the current Discord server. Use all=true for every emoji, or names/emoji_ids for selected emojis.", {"all": {"type": "boolean"}, "names": {"type": "array", "items": {"type": "string"}}, "emoji_ids": {"type": "array", "items": {"type": "string"}}, "reason": {"type": "string"}}),
         fn("member_info", "Get information about a server member by exact Discord user ID.", {"user_id": discord_id}, ["user_id"]),
         fn("send_message", "Send a message to a Discord channel by exact Discord channel ID.", {"channel_id": discord_id, "content": {"type": "string"}}, ["channel_id", "content"]),
         fn("send_dm", "Send a direct message to a Discord user by exact Discord user ID.", {"user_id": discord_id, "content": {"type": "string"}}, ["user_id", "content"]),
