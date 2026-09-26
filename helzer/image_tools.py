@@ -82,13 +82,21 @@ async def execute_image_tool(message, args: dict[str, Any], gemini_client) -> di
     if size not in ALLOWED_SIZES:
         size = "1K"
 
+def _image_generation_config(ratio: str, size: str) -> types.GenerateContentConfig:
+    """Build a GenerateContentConfig compatible with the installed google-genai SDK."""
+    return types.GenerateContentConfig(
+        response_modalities=["IMAGE"],
+        image_config=types.ImageConfig(
+            aspect_ratio=ratio,
+            image_size=size,
+        ),
+    )
+
+
     response = await gemini_client.aio.models.generate_content(
         model=IMAGE_MODEL,
         contents=_designer_prompt(prompt),
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE"],
-            response_format={"image": {"aspect_ratio": ratio, "image_size": size}},
-        ),
+        config=_image_generation_config(ratio, size),
     )
     image = None
     for part in getattr(response, "parts", []) or []:
