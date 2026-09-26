@@ -120,6 +120,7 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
     if len(infos) > MAX_ARCHIVE_FILES:
         raise ValueError(f"ZIP contains too many files. Maximum is {MAX_ARCHIVE_FILES}.")
     total = 0
+    image_total = 0
     files: list[dict[str, str]] = []
     images: list[dict[str, Any]] = []
     seen_image_digests: set[str] = set()
@@ -135,6 +136,9 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
             if info.file_size <= MAX_ARCHIVE_IMAGE_BYTES and not normalized.is_absolute() and ".." not in normalized.parts:
                 mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}[suffix]
                 raw_image = archive.read(info)
+                image_total += len(raw_image)
+                if image_total > MAX_EXTRACTED_BYTES:
+                    raise ValueError("ZIP image assets exceed the 512 MB inspection limit.")
                 image_candidates += 1
                 digest = _image_digest(raw_image)
                 if digest in seen_image_digests:
