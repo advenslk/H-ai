@@ -278,6 +278,26 @@ async def execute_emoji_tool(message, args: dict[str, Any]) -> dict[str, Any]:
     data, mime, source_name = await _resolve_emoji_source(message, args)
     processed = _crop_image(data, mime, args)
     name = _clean_name(args.get("name", "helzer_emoji"))
+
+    existing = discord.utils.get(guild.emojis, name=name)
+    if existing is not None:
+        return {
+            "ok": True,
+            "action": "add_custom_emoji",
+            "duplicate": True,
+            "name": existing.name,
+            "id": str(existing.id),
+            "mention": str(existing),
+            "source": source_name,
+        }
+
+    emoji_limit = getattr(guild, "emoji_limit", None)
+    if emoji_limit is not None and len(guild.emojis) >= emoji_limit:
+        raise ValueError(
+            f"This server has reached its custom emoji capacity ({emoji_limit}). "
+            "Free space or use a server with more emoji slots before adding another."
+        )
+
     try:
         emoji = await guild.create_custom_emoji(
             name=name, image=processed, reason="Added by Helzer at the user's request"
