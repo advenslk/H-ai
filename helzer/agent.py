@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Any
 
@@ -10,6 +11,7 @@ import discord
 from .context import actor, discord_context, scope_for
 from .gemini import GeminiProvider, GeminiQuotaError
 from .emoji_tools import attachment_parts, emoji_tool_specs, execute_emoji_tool
+from .image_tools import execute_image_tool, image_tool_specs
 from .memory import MemoryStore
 from .prompts import build_system_prompt
 from .tools import HIGH_RISK, execute, tool_specs
@@ -22,7 +24,7 @@ MUTATING_TOOLS = {
     "add_role", "remove_role", "create_role", "create_channel", "delete_channel", "rename_channel",
     "lock_channel", "unlock_channel", "set_slowmode", "purge_messages", "assign_role_all", "add_custom_emoji",
 }
-TOOL_HINTS = ("lock", "unlock", "channel", "dm", "direct message", "message", "send", "role", "timeout", "kick", "ban", "unban", "purge", "delete", "remove", "add", "create", "rename", "slowmode", "slow mode", "server", "member", "permission", "permissions", "emoji", "emojis", "custom emoji", "custom emojis", "sticker")
+TOOL_HINTS = ("lock", "unlock", "channel", "dm", "direct message", "message", "send", "role", "timeout", "kick", "ban", "unban", "purge", "delete", "remove", "add", "create", "rename", "slowmode", "slow mode", "server", "member", "permission", "permissions", "emoji", "emojis", "custom emoji", "custom emojis", "sticker", "generate image", "generate a", "create an image", "create image", "design", "logo", "poster", "banner", "thumbnail", "graphic")
 
 
 class ConfirmationView(discord.ui.View):
@@ -62,7 +64,8 @@ class HelzerAgent:
         self.pending: dict[str, dict[str, Any]] = {}
         self._rate_lock = asyncio.Lock()
         self._last_request: dict[int, float] = {}
-        self._tool_specs = tool_specs() + emoji_tool_specs()
+        self._tool_specs = tool_specs() + emoji_tool_specs() + image_tool_specs()
+        self._generated_files: dict[int, list[dict[str, str]]] = {}
 
     def authorized(self, member: discord.Member) -> bool:
         if member.id in self.settings.owner_ids or member.guild_permissions.administrator: return True
@@ -109,8 +112,20 @@ class HelzerAgent:
                 log.exception("Message processing failed: user=%s guild=%s channel=%s prompt=%r", getattr(message.author, "id", None), getattr(getattr(message, "guild", None), "id", None), getattr(getattr(message, "channel", None), "id", None), prompt)
                 result = "Gemini is temporarily unavailable. Please try again in a moment."
         log.info("Request completed: user=%s total_latency=%.2fs", getattr(message.author, "id", None), time.perf_counter() - started)
-        if isinstance(result, discord.ui.View): await message.reply("This action changes the server or sends a message. Confirm it below.", view=result, mention_author=False)
-        else: await self._send_text(message, result)
+        if isinstance(result, discord.ui.View):
+            await message.reply("This action changes the server or sends a message. Confirm it below.", view=result, mention_author=False)
+        else:
+            files = self._generated_files.pop(getattr(message, "id", 0), [])
+            if files:
+                discord_files = [discord.File(item["path"], filename=item["filename"]) for item in files]
+                await message.reply(result, files=discord_files, mention_author=False)
+                for item in files:
+                    try:
+                        os.remove(item["path"])
+                    except OSError:
+                        pass
+            else:
+                await self._send_text(message, result)
 
     async def _send_text(self, message, text: str):
         if len(text) <= 1900: await message.reply(text, mention_author=False); return
@@ -146,6 +161,10 @@ class HelzerAgent:
                 try:
                     if name == "add_custom_emoji":
                         result = await execute_emoji_tool(message, args)
+                    elif name == "generate_image":
+                        result = await execute_image_tool(message, args, self.gemini.client)
+                        if result.get("ok"):
+                            self._generated_files.setdefault(getattr(message, "id", 0), []).append({"path": result["path"], "filename": result["filename"]})
                     else:
                         result = await execute(message, name, args, self.bot)
                 except Exception as exc: result = {"ok": False, "error": str(exc)}
