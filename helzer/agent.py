@@ -143,11 +143,16 @@ class HelzerAgent:
         # the requested image and removes an unnecessary LLM/tool-selection round.
         if is_image_generation_request(prompt):
             ratio, size = requested_image_defaults(prompt)
-            result = await execute_image_tool(
-                message,
-                {"prompt": prompt, "aspect_ratio": ratio, "image_size": size},
-                self.gemini.client,
-            )
+            try:
+                result = await execute_image_tool(
+                    message,
+                    {"prompt": prompt, "aspect_ratio": ratio, "image_size": size},
+                    self.gemini.client,
+                )
+            except Exception as exc:
+                if GeminiProvider._is_quota_exhausted(exc):
+                    raise GeminiQuotaError("Gemini image quota exhausted.") from exc
+                raise
             if result.get("ok"):
                 self._generated_files.setdefault(getattr(message, "id", 0), []).append(
                     {"path": result["path"], "filename": result["filename"]}
@@ -179,7 +184,10 @@ class HelzerAgent:
                     self.pending[key] = {"message": message, "requester_id": requester_id, "name": name, "args": args}
                     return ConfirmationView(self, key, f"{name}: {', '.join(f'{k}={v}' for k, v in args.items())}")
                 try:
-                    if name == "add_custom_emoji":
+                    if name == "list_custom_emojis":
+                        from .emoji_tools import execute_list_emojis_tool
+                        result = await execute_list_emojis_tool(message)
+                    elif name == "add_custom_emoji":
                         result = await execute_emoji_tool(message, args)
                     elif name == "remove_custom_emojis":
                         from .emoji_tools import execute_remove_emojis_tool
@@ -196,6 +204,9 @@ class HelzerAgent:
 
     async def execute_pending(self, pending: dict[str, Any]):
         try:
+            if pending["name"] == "list_custom_emojis":
+                from .emoji_tools import execute_list_emojis_tool
+                return await execute_list_emojis_tool(pending["message"])
             if pending["name"] == "add_custom_emoji":
                 return await execute_emoji_tool(pending["message"], pending["args"])
             if pending["name"] == "remove_custom_emojis":
