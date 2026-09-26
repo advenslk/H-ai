@@ -22,7 +22,7 @@ log = logging.getLogger("helzer.agent")
 MUTATING_TOOLS = {
     "send_message", "send_dm", "timeout_member", "ban_member", "kick_member", "unban_member",
     "add_role", "remove_role", "create_role", "create_channel", "delete_channel", "rename_channel",
-    "lock_channel", "unlock_channel", "set_slowmode", "purge_messages", "assign_role_all", "add_custom_emoji",
+    "lock_channel", "unlock_channel", "set_slowmode", "purge_messages", "assign_role_all", "add_custom_emoji", "remove_custom_emojis",
 }
 TOOL_HINTS = ("lock", "unlock", "channel", "dm", "direct message", "message", "send", "role", "timeout", "kick", "ban", "unban", "purge", "delete", "remove", "add", "create", "rename", "slowmode", "slow mode", "server", "member", "permission", "permissions", "emoji", "emojis", "custom emoji", "custom emojis", "sticker", "generate image", "generate a", "create an image", "create image", "design", "logo", "poster", "banner", "thumbnail", "graphic")
 
@@ -181,6 +181,9 @@ class HelzerAgent:
                 try:
                     if name == "add_custom_emoji":
                         result = await execute_emoji_tool(message, args)
+                    elif name == "remove_custom_emojis":
+                        from .emoji_tools import execute_remove_emojis_tool
+                        result = await execute_remove_emojis_tool(message, args)
                     elif name == "generate_image":
                         result = await execute_image_tool(message, args, self.gemini.client)
                         if result.get("ok"):
@@ -195,6 +198,9 @@ class HelzerAgent:
         try:
             if pending["name"] == "add_custom_emoji":
                 return await execute_emoji_tool(pending["message"], pending["args"])
+            if pending["name"] == "remove_custom_emojis":
+                from .emoji_tools import execute_remove_emojis_tool
+                return await execute_remove_emojis_tool(pending["message"], pending["args"])
             return await execute(pending["message"], pending["name"], pending["args"], self.bot)
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
