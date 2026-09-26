@@ -52,7 +52,7 @@ def emoji_tool_specs() -> list[dict[str, Any]]:
                 "height": {"type": "integer", "description": "Crop height, normalized 0-1000. Omit for full image."},
                 "archive_path": {"type": "string", "description": "Image path inside an uploaded ZIP. Use when the emoji asset is stored in the archive."},
             },
-            "required": ["attachment_index", "name"],
+            "required": ["name"],
         },
     }]
 
