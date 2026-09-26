@@ -1,5 +1,9 @@
 from helzer.emoji_tools import MAX_EMOJI_BYTES, _clean_name, _crop_image, emoji_tool_specs
-from helzer.image_tools import is_image_generation_request, requested_image_defaults
+from helzer.image_tools import (
+    _image_generation_config,
+    is_image_generation_request,
+    requested_image_defaults,
+)
 from PIL import Image
 import io
 
@@ -89,3 +93,10 @@ def test_image_request_detection_routes_advertisement_to_generation():
 
 def test_image_request_detection_does_not_capture_normal_design_discussion():
     assert is_image_generation_request("What is a good design for my Discord server?") is False
+
+
+def test_image_generation_config_uses_supported_generate_content_fields():
+    config = _image_generation_config("16:9", "2K")
+    assert config.response_modalities == ["IMAGE"]
+    assert config.image_config.aspect_ratio == "16:9"
+    assert config.image_config.image_size == "2K"
