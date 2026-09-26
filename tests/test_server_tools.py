@@ -9,4 +9,7 @@ def test_remove_custom_emojis_tool_is_exposed_as_destructive_action():
     assert "remove" in spec["description"].lower()
     assert "delete" in spec["description"].lower()
     assert "remove_custom_emojis" in HIGH_RISK
-    assert any(item["name"] == "remove_custom_emojis" for item in tool_specs())
+    from helzer.image_tools import image_tool_specs
+    names = [item["name"] for item in tool_specs() + emoji_tool_specs() + image_tool_specs()]
+    assert "remove_custom_emojis" in names
+    assert names.count("remove_custom_emojis") == 1
