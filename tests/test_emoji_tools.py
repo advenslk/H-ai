@@ -6,8 +6,8 @@ import io
 def test_emoji_tool_schema_has_attachment_and_crop_fields():
     spec = emoji_tool_specs()[0]
     properties = spec["parameters"]["properties"]
-    assert {"attachment_index", "name", "x", "y", "width", "height"} <= set(properties)
-    assert spec["parameters"]["required"] == ["attachment_index", "name"]
+    assert {"attachment_index", "name", "x", "y", "width", "height", "archive_path"} <= set(properties)
+    assert spec["parameters"]["required"] == ["name"]
 
 
 def test_clean_name_normalizes_ai_generated_names():
@@ -58,3 +58,23 @@ def test_zip_limits_file_count():
         __import__("helzer.emoji_tools", fromlist=["inspect_archive"]).inspect_archive(
             raw.getvalue(), "project.zip"
         )
+
+
+def test_duplicate_image_assets_are_removed():
+    from helzer.emoji_tools import _select_unique_images
+    images = [
+        {"path": "a.png", "data": b"same", "mime": "image/png"},
+        {"path": "b.png", "data": b"same", "mime": "image/png"},
+        {"path": "c.png", "data": b"different", "mime": "image/png"},
+    ]
+    result = _select_unique_images(images, 5000)
+    assert [item["path"] for item in result] == ["a.png", "c.png"]
+
+
+def test_emoji_selection_is_capped_at_5000():
+    from helzer.emoji_tools import _select_unique_images
+    images = [
+        {"path": f"{i}.png", "data": str(i).encode(), "mime": "image/png"}
+        for i in range(5001)
+    ]
+    assert len(_select_unique_images(images, 5000)) == 5000
