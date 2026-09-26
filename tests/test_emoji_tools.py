@@ -9,7 +9,7 @@ import io
 
 
 def test_emoji_tool_schema_has_attachment_and_crop_fields():
-    spec = emoji_tool_specs()[0]
+    spec = next(item for item in emoji_tool_specs() if item["name"] == "add_custom_emoji")
     properties = spec["parameters"]["properties"]
     assert {"attachment_index", "name", "x", "y", "width", "height", "archive_path"} <= set(properties)
     assert spec["parameters"]["required"] == ["name"]
