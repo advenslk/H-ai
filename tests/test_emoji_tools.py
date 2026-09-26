@@ -30,3 +30,31 @@ def test_crop_image_returns_small_discord_ready_png():
     decoded = Image.open(io.BytesIO(result))
     assert decoded.width <= 128
     assert decoded.height <= 128
+
+
+def test_zip_inspection_reads_source_and_skips_secrets():
+    import zipfile
+    raw = io.BytesIO()
+    with zipfile.ZipFile(raw, "w") as z:
+        z.writestr("emoji.py", 'EMOJI_START = "▶️"')
+        z.writestr(".env", "DISCORD_TOKEN=secret")
+        z.writestr("../escape.py", "bad")
+        z.writestr("image.png", b"not-source")
+    result = __import__("helzer.emoji_tools", fromlist=["inspect_archive"]).inspect_archive(
+        raw.getvalue(), "project.zip"
+    )
+    assert [f["path"] for f in result["files"]] == ["emoji.py"]
+    assert "EMOJI_START" in result["context"]
+
+
+def test_zip_limits_file_count():
+    import zipfile
+    raw = io.BytesIO()
+    with zipfile.ZipFile(raw, "w") as z:
+        for i in range(501):
+            z.writestr(f"f{i}.txt", "x")
+    import pytest
+    with pytest.raises(ValueError, match="too many files"):
+        __import__("helzer.emoji_tools", fromlist=["inspect_archive"]).inspect_archive(
+            raw.getvalue(), "project.zip"
+        )
