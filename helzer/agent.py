@@ -22,7 +22,7 @@ MUTATING_TOOLS = {
     "add_role", "remove_role", "create_role", "create_channel", "delete_channel", "rename_channel",
     "lock_channel", "unlock_channel", "set_slowmode", "purge_messages", "assign_role_all", "add_custom_emoji",
 }
-TOOL_HINTS = ("lock", "unlock", "channel", "dm", "direct message", "message", "send", "role", "timeout", "kick", "ban", "unban", "purge", "delete", "remove", "add", "create", "rename", "slowmode", "slow mode", "server", "member", "permission", "permissions")
+TOOL_HINTS = ("lock", "unlock", "channel", "dm", "direct message", "message", "send", "role", "timeout", "kick", "ban", "unban", "purge", "delete", "remove", "add", "create", "rename", "slowmode", "slow mode", "server", "member", "permission", "permissions", "emoji", "emojis", "custom emoji", "custom emojis", "sticker")
 
 
 class ConfirmationView(discord.ui.View):
