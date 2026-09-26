@@ -20,6 +20,7 @@ MAX_EXTRACTED_BYTES = 50 * 1024 * 1024
 MAX_ARCHIVE_FILES = 500
 MAX_FILE_BYTES = 512 * 1024
 MAX_CONTEXT_CHARS = 80_000
+MAX_ARCHIVE_IMAGE_BYTES = 8 * 1024 * 1024
 SOURCE_EXTENSIONS = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml", ".toml",
     ".ini", ".cfg", ".md", ".txt", ".html", ".css", ".scss", ".java", ".kt",
@@ -49,6 +50,7 @@ def emoji_tool_specs() -> list[dict[str, Any]]:
                 "y": {"type": "integer", "description": "Crop top, normalized 0-1000. Omit for full image."},
                 "width": {"type": "integer", "description": "Crop width, normalized 0-1000. Omit for full image."},
                 "height": {"type": "integer", "description": "Crop height, normalized 0-1000. Omit for full image."},
+                "archive_path": {"type": "string", "description": "Image path inside an uploaded ZIP. Use when the emoji asset is stored in the archive."},
             },
             "required": ["attachment_index", "name"],
         },
@@ -116,9 +118,19 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
         raise ValueError(f"ZIP contains too many files. Maximum is {MAX_ARCHIVE_FILES}.")
     total = 0
     files: list[dict[str, str]] = []
+    images: list[dict[str, Any]] = []
     context_parts: list[str] = []
     for info in infos:
-        if info.is_dir() or not _safe_source_name(info.filename):
+        if info.is_dir():
+            continue
+        normalized = PurePosixPath(info.filename.replace("\\\\", "/"))
+        suffix = normalized.suffix.lower()
+        if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+            if info.file_size <= MAX_ARCHIVE_IMAGE_BYTES and not normalized.is_absolute() and ".." not in normalized.parts:
+                mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}[suffix]
+                images.append({"path": info.filename, "data": archive.read(info), "size": info.file_size, "mime": mime})
+            continue
+        if not _safe_source_name(info.filename):
             continue
         if info.file_size > MAX_FILE_BYTES:
             continue
@@ -136,6 +148,7 @@ def inspect_archive(data: bytes, filename: str) -> dict[str, Any]:
         "filename": filename,
         "files": files,
         "file_count": len(files),
+        "images": images,
         "context": "".join(context_parts)[:MAX_CONTEXT_CHARS],
     }
 
@@ -177,13 +190,38 @@ async def attachment_parts(attachments) -> list[Any]:
                 result = inspect_archive(data, filename)
                 parts.append(types.Part.from_text(text=(
                     f"ZIP attachment {index}: {filename}\n"
-                    f"Inspected {result['file_count']} source files. "
+                    f"Inspected {result['file_count']} source files and {len(result['images'])} image assets. "
                     "Secrets, binaries, unsafe paths, and oversized files were excluded.\n"
                     + result["context"]
                 )))
+                for image in result["images"]:
+                    parts.append(types.Part.from_text(text=f"ZIP image: {image['path']}"))
+                    parts.append(types.Part.from_bytes(data=image["data"], mime_type=image["mime"]))
             except ValueError as exc:
                 parts.append(types.Part.from_text(text=f"ZIP attachment {index}: {exc}"))
     return parts
+
+async def _resolve_emoji_source(message, args: dict[str, Any]) -> tuple[bytes, str, str]:
+    attachments = list(getattr(message, "attachments", []) or [])
+    archive_path = str(args.get("archive_path", "")).strip()
+    if archive_path:
+        for attachment in attachments:
+            filename = getattr(attachment, "filename", "") or ""
+            if not filename.lower().endswith(".zip"):
+                continue
+            result = inspect_archive(await attachment.read(), filename)
+            for image in result["images"]:
+                if image["path"] == archive_path:
+                    return image["data"], image["mime"], f"{filename}:{archive_path}"
+        raise ValueError(f"Image '{archive_path}' was not found inside the uploaded ZIP.")
+    index = int(args.get("attachment_index", -1))
+    if index < 0 or index >= len(attachments):
+        raise ValueError("The requested attachment index is not available.")
+    attachment = attachments[index]
+    mime = (getattr(attachment, "content_type", None) or "").split(";")[0].lower()
+    if mime not in IMAGE_MIME_TYPES:
+        raise ValueError("That attachment is not a supported image. Use PNG, JPG, WEBP, or GIF.")
+    return await attachment.read(), mime, getattr(attachment, "filename", "image")
 
 async def execute_emoji_tool(message, args: dict[str, Any]) -> dict[str, Any]:
     guild = getattr(message, "guild", None)
@@ -194,15 +232,7 @@ async def execute_emoji_tool(message, args: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("The bot member is unavailable in this server.")
     if not me.guild_permissions.manage_emojis_and_stickers:
         raise ValueError("The bot needs Manage Expressions permission to add custom emojis.")
-    attachments = list(getattr(message, "attachments", []) or [])
-    index = int(args.get("attachment_index", -1))
-    if index < 0 or index >= len(attachments):
-        raise ValueError("The requested attachment index is not available.")
-    attachment = attachments[index]
-    mime = (getattr(attachment, "content_type", None) or "").split(";")[0].lower()
-    if mime not in IMAGE_MIME_TYPES:
-        raise ValueError("That attachment is not a supported image. Use PNG, JPG, WEBP, or GIF.")
-    data = await attachment.read()
+    data, mime, source_name = await _resolve_emoji_source(message, args)
     processed = _crop_image(data, mime, args)
     name = _clean_name(args.get("name", "helzer_emoji"))
     try:
